@@ -81,8 +81,6 @@ export default function ChatScreen() {
 
     return (
       <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowPartner]}>
-        
-        {/* Partner Avatar - only show for partner messages */}
         {!isMe && (
           partner?.avatarUrl ? (
             <Image source={{ uri: partner.avatarUrl }} style={styles.smallAvatar} />
@@ -93,10 +91,7 @@ export default function ChatScreen() {
           )
         )}
 
-        {/* Message Wrapper (holds bubble + reactions + meta) */}
         <View style={[styles.messageContentWrapper, isMe ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
-          
-          {/* Bubble + Reactions relative container */}
           <View>
             <TouchableOpacity 
               activeOpacity={0.8}
@@ -108,7 +103,6 @@ export default function ChatScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Reactions sitting perfectly on the corner of the bubble */}
             {hasReactions && (
               <View style={[styles.reactionsContainer, isMe ? styles.myReactions : styles.partnerReactions]}>
                 {item.reactions.map((r: any, idx: number) => (
@@ -120,7 +114,6 @@ export default function ChatScreen() {
             )}
           </View>
 
-          {/* Timestamp and Delivered Status below the bubble */}
           <View style={[styles.messageMeta, isMe ? { justifyContent: 'flex-end', paddingRight: 5 } : { justifyContent: 'flex-start', paddingLeft: 5 }]}>
             <Text style={styles.metaText}>{formatTime(item.createdAt)}</Text>
             {isMe && (
@@ -141,7 +134,6 @@ export default function ChatScreen() {
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
              <Ionicons name="chevron-back" size={28} color={Colors.primary} />
@@ -150,19 +142,18 @@ export default function ChatScreen() {
              <Image source={require('../../../assets/images/covylogo.png')} style={styles.headerLogo} resizeMode="contain" />
              <Text style={styles.headerTitle}>My Partner Conversation</Text>
           </View>
-          <View style={{ width: 40 }} /> {/* Spacer to balance back button */}
+          <View style={{ width: 40 }} />
         </View>
 
         <FlatList
           data={messages}
           keyExtractor={(item, index) => item.id ? item.id.toString() : index.toString()}
           renderItem={renderMessage}
-          inverted // Messages appear from the bottom up
+          inverted
           contentContainerStyle={[styles.messageList, { paddingBottom: 20, paddingTop: 20 }]}
-          ListFooterComponent={renderListHeader} // Footer is at the TOP visually when inverted!
+          ListFooterComponent={renderListHeader}
         />
 
-        {/* INPUT */}
         <View style={[
             styles.inputContainer, 
             { paddingBottom: isKeyboardVisible || Platform.OS === 'android' ? 15 : Math.max(insets.bottom + 75, 95) }
@@ -181,7 +172,6 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Reaction Picker Overlay */}
         {reactionMessageId && (
           <Modal transparent animationType="fade">
             <TouchableWithoutFeedback onPress={() => setReactionMessageId(null)}>
