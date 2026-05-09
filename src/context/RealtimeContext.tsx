@@ -7,12 +7,15 @@ import api from '../api/axios';
 interface RealtimeContextType {
   socket: Socket | null;
   isConnected: boolean;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, replyToId?: string) => Promise<void>;
   reactToMessage: (messageId: string, emoji: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   fetchMessageHistory: () => Promise<void>;
   messages: any[];
-  partnerLocation: { lat: number; lng: number } | null;
-  pingLocation: (lat: number, lng: number) => void;
+  partnerLocation: { lat: number; lng: number; battery?: number; isCharging?: boolean } | null;
+  partnerPresence: { isOnline: boolean; lastActive?: string } | null;
+  pingLocation: (lat: number, lng: number, battery: number, isCharging: boolean) => void;
+  lastSharedUpdate: number;
 }
 
 const RealtimeContext = createContext<RealtimeContextType>({
@@ -20,10 +23,13 @@ const RealtimeContext = createContext<RealtimeContextType>({
   isConnected: false,
   sendMessage: async () => {},
   reactToMessage: async () => {},
+  deleteMessage: async () => {},
   fetchMessageHistory: async () => {},
   messages: [],
   partnerLocation: null,
+  partnerPresence: null,
   pingLocation: () => {},
+  lastSharedUpdate: Date.now(),
 });
 
 export const RealtimeProvider = ({ children }: { children: React.ReactNode }) => {
@@ -31,7 +37,9 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  const [partnerLocation, setPartnerLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [partnerLocation, setPartnerLocation] = useState<{lat: number, lng: number, battery?: number, isCharging?: boolean} | null>(null);
+  const [partnerPresence, setPartnerPresence] = useState<{isOnline: boolean, lastActive?: string} | null>(null);
+  const [lastSharedUpdate, setLastSharedUpdate] = useState<number>(Date.now());
 
   useEffect(() => {
     if (!session || !hasPartner) {
@@ -72,10 +80,19 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
 
     newSocket.on('partner_location_update', (location) => {
       try {
-        setPartnerLocation({ lat: location.lat, lng: location.lng });
+        setPartnerLocation({ 
+          lat: location.lat, 
+          lng: location.lng, 
+          battery: location.battery, 
+          isCharging: location.isCharging 
+        });
       } catch (e) {
         console.error('Failed to handle incoming location', e);
       }
+    });
+
+    newSocket.on('partner_presence', (presence) => {
+      setPartnerPresence({ isOnline: presence.isOnline, lastActive: presence.lastActive });
     });
 
     newSocket.on('message_reacted', (reactionData) => {
@@ -83,13 +100,23 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
         prev.map((msg) => {
           if (msg.id === reactionData.messageId) {
             const existingReactions = msg.reactions || [];
-            // Remove existing reaction from this user if present
             const filtered = existingReactions.filter((r: any) => r.userId !== reactionData.userId);
+            if (reactionData.emoji === null) {
+              return { ...msg, reactions: filtered };
+            }
             return { ...msg, reactions: [...filtered, reactionData] };
           }
           return msg;
         })
       );
+    });
+
+    newSocket.on('message_deleted', (data) => {
+      setMessages((prev) => prev.filter((msg) => msg.id !== data.messageId));
+    });
+
+    newSocket.on('shared_space_update', () => {
+      setLastSharedUpdate(Date.now());
     });
 
     setSocket(newSocket);
@@ -110,7 +137,7 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (content: string, replyToId?: string) => {
     try {
       // Optimistic update
       const tempId = Date.now().toString();
@@ -120,12 +147,14 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
         senderId: profile?.id,
         createdAt: new Date().toISOString(),
         isRead: false,
-        reactions: []
+        reactions: [],
+        replyToId,
+        replyTo: replyToId ? messages.find(m => m.id === replyToId) : null,
       };
       setMessages((prev) => [optimisticMsg, ...prev]);
 
       // Send via robust HTTP endpoint
-      const response = await api.post('/chat', { content });
+      const response = await api.post('/chat', { content, replyToId });
       
       // Update optimistic message with real ID from DB
       if (response.data) {
@@ -140,13 +169,19 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
 
   const reactToMessage = async (messageId: string, emoji: string) => {
     try {
-      // Optimistic update
-      const optimisticReaction = { messageId, userId: profile?.id, emoji, createdAt: new Date().toISOString() };
       setMessages((prev) => 
         prev.map((msg) => {
           if (msg.id === messageId) {
             const existingReactions = msg.reactions || [];
+            const existing = existingReactions.find((r: any) => r.userId === profile?.id);
             const filtered = existingReactions.filter((r: any) => r.userId !== profile?.id);
+            
+            if (existing && existing.emoji === emoji) {
+               // Toggle off
+               return { ...msg, reactions: filtered };
+            }
+            
+            const optimisticReaction = { messageId, userId: profile?.id, emoji, createdAt: new Date().toISOString() };
             return { ...msg, reactions: [...filtered, optimisticReaction] };
           }
           return msg;
@@ -159,10 +194,21 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
-  const pingLocation = async (lat: number, lng: number) => {
+  const deleteMessage = async (messageId: string) => {
+    try {
+      // Optimistic delete
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      await api.delete(`/chat/${messageId}`);
+    } catch (e) {
+      console.error('Failed to delete message:', e);
+      // Revert optimism by fetching
+      fetchMessageHistory();
+    }
+  };
+
+  const pingLocation = async (lat: number, lng: number, battery: number, isCharging: boolean) => {
     if (!socket || !isConnected) return;
-    const payload = await encryptPayload({ latitude: lat, longitude: lng });
-    socket.emit('ping_location', payload);
+    socket.emit('ping_location', { lat, lng, battery, isCharging });
   };
 
   return (
@@ -171,10 +217,13 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
       isConnected, 
       sendMessage, 
       reactToMessage, 
+      deleteMessage,
       fetchMessageHistory, 
       messages, 
       partnerLocation, 
-      pingLocation 
+      partnerPresence,
+      pingLocation,
+      lastSharedUpdate
     }}>
       {children}
     </RealtimeContext.Provider>

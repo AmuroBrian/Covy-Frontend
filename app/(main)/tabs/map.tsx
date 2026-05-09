@@ -15,13 +15,14 @@ import { useNavigation, useRouter } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { Colors } from '../../../src/theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRealtime } from '../../../src/context/RealtimeContext';
 
 export default function MapScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const { session, profile, checkPartnerStatus } = useAuth();
-  const socketRef = useRef<Socket | null>(null);
+  const { pingLocation, partnerLocation: contextPartnerLocation } = useRealtime();
   const [myLocation, setMyLocation] = useState<{lat: number, lng: number} | null>(null);
   const [myBattery, setMyBattery] = useState<number>(100);
   const [isCharging, setIsCharging] = useState<boolean>(false);
@@ -92,22 +93,15 @@ export default function MapScreen() {
 
 
   useEffect(() => {
-    if (!session?.access_token) return;
-    
-    const wsUrl = process.env.EXPO_PUBLIC_WS_URL || 'http://192.168.1.100:3000';
-    const newSocket = io(wsUrl, {
-      auth: { token: session.access_token },
-      transports: ['websocket'],
-    });
-
-    newSocket.on('partner_location_update', (data) => {
-      setPartnerLocation({ lat: data.lat, lng: data.lng, battery: data.battery || 100, isCharging: data.isCharging });
-    });
-
-    socketRef.current = newSocket;
-    return () => { newSocket.disconnect(); };
-  }, [session]);
-
+    if (contextPartnerLocation) {
+      setPartnerLocation({
+        lat: contextPartnerLocation.lat,
+        lng: contextPartnerLocation.lng,
+        battery: contextPartnerLocation.battery || 100,
+        isCharging: contextPartnerLocation.isCharging
+      });
+    }
+  }, [contextPartnerLocation]);
   useEffect(() => {
     const fetchLatestPartnerLoc = async () => {
       try {
@@ -137,9 +131,7 @@ export default function MapScreen() {
           setMyBattery(batPercent);
           setIsCharging(isDeviceCharging);
           setMyLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-          if (socketRef.current) {
-            socketRef.current.emit('ping_location', { lat: loc.coords.latitude, lng: loc.coords.longitude, battery: batPercent, isCharging: isDeviceCharging });
-          }
+          pingLocation(loc.coords.latitude, loc.coords.longitude, batPercent, isDeviceCharging);
         }
       );
     })();
@@ -414,7 +406,7 @@ export default function MapScreen() {
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: sheetAnim }] }]}>
+      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: sheetAnim }], bottom: insets.bottom + 80 }]}>
         {sheetData?.type === 'partner' && (
           <View style={styles.sheetContent}>
             <ExpoImage source={{ uri: sheetData.data.avatarUrl }} style={styles.sheetAvatar} />
@@ -544,18 +536,15 @@ const extraStyles = StyleSheet.create({
 
   bottomSheet: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    left: 15,
+    right: 15,
     backgroundColor: Colors.white,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    padding: 25,
-    paddingBottom: 40,
+    borderRadius: 25,
+    padding: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
     elevation: 20,
     zIndex: 999,
   },

@@ -1,58 +1,159 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { Colors } from '../../../src/theme/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { getChecklists, getGoals } from '../../../src/api/shared.api';
+import ChecklistsModal from '../../../src/components/shared/ChecklistsModal';
+import GoalsModal from '../../../src/components/shared/GoalsModal';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
+import { useRealtime } from '../../../src/context/RealtimeContext';
 
 export default function SharedScreen() {
+  const [refreshing, setRefreshing] = useState(false);
+  const { lastSharedUpdate } = useRealtime();
+  
+  // Metrics
+  const [checklistsCount, setChecklistsCount] = useState(0);
+  const [goalsStats, setGoalsStats] = useState({ completed: 0, total: 0 });
+
+  // Modal States
+  const [isChecklistsOpen, setChecklistsOpen] = useState(false);
+  const [isGoalsOpen, setGoalsOpen] = useState(false);
+
+  const fetchMetrics = async () => {
+    try {
+      // Fetch checklists
+      const cData = await getChecklists();
+      setChecklistsCount(cData.length);
+
+      // Fetch goals
+      const gData = await getGoals();
+      const completed = gData.filter((g: any) => g.isCompleted).length;
+      setGoalsStats({ completed, total: gData.length });
+    } catch (e) {
+      console.log('Failed to fetch shared metrics', e);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchMetrics();
+    }, [])
+  );
+
+  useEffect(() => {
+    fetchMetrics();
+  }, [lastSharedUpdate]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchMetrics();
+    setRefreshing(false);
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.headerTitle}>Shared Space</Text>
-      
-      <TouchableOpacity style={styles.card}>
-        <Text style={styles.cardEmoji}>✅</Text>
-        <View style={styles.cardTextContainer}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+      >
+        <Text style={styles.headerTitle}>Shared Space</Text>
+        <Text style={styles.headerSubtitle}>Manage your life together</Text>
+        
+        {/* Checklists Card */}
+        <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => setChecklistsOpen(true)}>
+          <View style={styles.cardTop}>
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255, 107, 107, 0.1)' }]}>
+              <Ionicons name="list" size={24} color={Colors.primary} />
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.textLight} />
+          </View>
           <Text style={styles.cardTitle}>Checklists</Text>
-          <Text style={styles.cardSubtitle}>Groceries, chores, and shared tasks.</Text>
-        </View>
-      </TouchableOpacity>
+          <Text style={styles.cardSubtitle}>
+            {checklistsCount === 0 ? 'No active lists' : `${checklistsCount} lists available`}
+          </Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity style={styles.card}>
-        <Text style={styles.cardEmoji}>🎯</Text>
-        <View style={styles.cardTextContainer}>
+        {/* Goals Card */}
+        <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => setGoalsOpen(true)}>
+          <View style={styles.cardTop}>
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(76, 201, 240, 0.1)' }]}>
+              <Ionicons name="flag" size={24} color="#4CC9F0" />
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.textLight} />
+          </View>
           <Text style={styles.cardTitle}>Goals</Text>
-          <Text style={styles.cardSubtitle}>Track your shared milestones together.</Text>
-        </View>
-      </TouchableOpacity>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.cardSubtitle}>
+              {goalsStats.total === 0 ? 'No active goals' : `${goalsStats.completed} of ${goalsStats.total} completed`}
+            </Text>
+            {goalsStats.total > 0 && (
+              <View style={styles.miniProgressContainer}>
+                <View style={[styles.miniProgressBar, { width: `${(goalsStats.completed / goalsStats.total) * 100}%`, backgroundColor: "#4CC9F0" }]} />
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </ScrollView>
 
-      <TouchableOpacity style={styles.card}>
-        <Text style={styles.cardEmoji}>💰</Text>
-        <View style={styles.cardTextContainer}>
-          <Text style={styles.cardTitle}>Finance</Text>
-          <Text style={styles.cardSubtitle}>Manage shared budgets and expenses.</Text>
-        </View>
-      </TouchableOpacity>
-    </ScrollView>
+      {/* Feature Modals */}
+      <ChecklistsModal visible={isChecklistsOpen} onClose={() => { setChecklistsOpen(false); fetchMetrics(); }} />
+      <GoalsModal visible={isGoalsOpen} onClose={() => { setGoalsOpen(false); fetchMetrics(); }} />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: 20 },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: Colors.primary, marginBottom: 20 },
+  safeArea: { flex: 1, backgroundColor: Colors.surface },
+  container: { flex: 1 },
+  content: { padding: 20, paddingBottom: 100 },
+  headerTitle: { fontSize: 32, fontWeight: 'bold', color: Colors.text, marginTop: 10 },
+  headerSubtitle: { fontSize: 16, color: Colors.textLight, marginBottom: 30, marginTop: 5 },
+  
   card: {
-    flexDirection: 'row',
     backgroundColor: Colors.white,
     padding: 20,
-    borderRadius: 15,
-    marginBottom: 15,
+    borderRadius: 20,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
     elevation: 3,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  cardEmoji: { fontSize: 30, marginRight: 15 },
-  cardTextContainer: { flex: 1 },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text, marginBottom: 5 },
-  cardSubtitle: { fontSize: 14, color: Colors.textLight },
+  cardTitle: { fontSize: 22, fontWeight: 'bold', color: Colors.text, marginBottom: 5 },
+  cardSubtitle: { fontSize: 15, color: Colors.textLight },
+  
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  miniProgressContainer: {
+    width: 60,
+    height: 6,
+    backgroundColor: Colors.surface,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  miniProgressBar: {
+    height: '100%',
+    borderRadius: 3,
+  }
 });
