@@ -1,92 +1,67 @@
-import { Buffer } from 'buffer';
+import forge from 'node-forge';
 
-/**
- * AES-256-GCM End-to-End Encryption Utility
- * This encrypts payloads sent to the Covy Backend and decrypts the responses.
- *
- * NOTE: Ensure you have a polyfill for 'crypto' and 'buffer' if using React Native,
- * for example by using `react-native-crypto` or Web Crypto API in standard React.
- */
-
-// These should be loaded from your frontend environment variables (.env)
-// Make sure this matches the backend exactly.
 const ENCRYPTION_KEY = process.env.EXPO_PUBLIC_ENCRYPTION_KEY || 'your-32-byte-secure-encryption-key-here'; 
 const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
 
-/**
- * Encrypts a JSON payload into a base64 string using AES-256-GCM
- */
+// Ensure key is exactly 32 bytes (256 bits) for AES-256
+const keyBytes = forge.util.createBuffer(ENCRYPTION_KEY, 'utf8').getBytes();
+
 export async function encryptPayload(payload: any): Promise<string> {
   const textToEncrypt = JSON.stringify(payload);
-  const enc = new TextEncoder();
-  const encodedText = enc.encode(textToEncrypt);
-
-  // Generate a random initialization vector
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
   
-  // Import the key
-  const keyData = enc.encode(ENCRYPTION_KEY);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt']
-  );
-
-  // Encrypt the data
-  const encryptedBuffer = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    encodedText
-  );
-
-  const encryptedArray = new Uint8Array(encryptedBuffer);
+  // Generate random IV
+  const ivBytes = forge.random.getBytesSync(IV_LENGTH);
   
-  // AES-GCM appends the auth tag at the end of the ciphertext.
-  // The format we'll send to the backend: iv:ciphertext
+  const cipher = forge.cipher.createCipher('AES-GCM', keyBytes);
+  cipher.start({
+    iv: ivBytes,
+    tagLength: 128 // 16 bytes
+  });
+  cipher.update(forge.util.createBuffer(textToEncrypt, 'utf8'));
+  cipher.finish();
   
-  const ivBase64 = Buffer.from(iv).toString('base64');
-  const cipherBase64 = Buffer.from(encryptedArray).toString('base64');
-
+  // node-forge outputs the ciphertext and the tag separately
+  const encryptedBytes = cipher.output.getBytes();
+  const tagBytes = cipher.mode.tag.getBytes();
+  
+  // WebCrypto (and the backend) expects the tag to be appended to the ciphertext
+  const cipherWithTag = encryptedBytes + tagBytes;
+  
+  // Convert to Base64
+  const ivBase64 = forge.util.encode64(ivBytes);
+  const cipherBase64 = forge.util.encode64(cipherWithTag);
+  
   return `${ivBase64}:${cipherBase64}`;
 }
 
-/**
- * Decrypts a base64 response payload from the backend using AES-256-GCM
- */
 export async function decryptResponse(encryptedString: string): Promise<any> {
+  if (!encryptedString) return null;
   const parts = encryptedString.split(':');
   if (parts.length !== 2) throw new Error('Invalid encrypted payload format');
 
   const [ivBase64, cipherBase64] = parts;
   
-  const iv = Buffer.from(ivBase64, 'base64');
-  const cipherData = Buffer.from(cipherBase64, 'base64');
-
-  const enc = new TextEncoder();
-  const keyData = enc.encode(ENCRYPTION_KEY);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'AES-GCM' },
-    false,
-    ['decrypt']
-  );
-
-  try {
-    const decryptedBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      cryptoKey,
-      cipherData
-    );
-
-    const dec = new TextDecoder();
-    const decryptedText = dec.decode(decryptedBuffer);
-    return JSON.parse(decryptedText);
-  } catch (error) {
-    console.error('Decryption failed:', error);
-    throw new Error('Decryption failed. Check if encryption keys match.');
+  const ivBytes = forge.util.decode64(ivBase64);
+  const cipherWithTagBytes = forge.util.decode64(cipherBase64);
+  
+  // The last 16 bytes are the auth tag
+  const tagLengthBytes = 16;
+  const encryptedBytes = cipherWithTagBytes.slice(0, cipherWithTagBytes.length - tagLengthBytes);
+  const tagBytes = cipherWithTagBytes.slice(cipherWithTagBytes.length - tagLengthBytes);
+  
+  const decipher = forge.cipher.createDecipher('AES-GCM', keyBytes);
+  decipher.start({
+    iv: ivBytes,
+    tagLength: 128,
+    tag: forge.util.createBuffer(tagBytes)
+  });
+  decipher.update(forge.util.createBuffer(encryptedBytes));
+  const pass = decipher.finish();
+  
+  if (!pass) {
+    throw new Error('Decryption failed. Check if encryption keys match or data was tampered.');
   }
+  
+  const decryptedText = forge.util.decodeUtf8(decipher.output.getBytes());
+  return JSON.parse(decryptedText);
 }
