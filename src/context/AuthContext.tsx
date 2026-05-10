@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../api/supabase';
 import apiClient from '../api/axios';
+import { registerIndieID, unregisterIndieDevice } from 'native-notify';
+import { OverlayManager } from './OverlayManager';
 
 interface AuthContextType {
   session: Session | null;
@@ -10,6 +12,7 @@ interface AuthContextType {
   isLoading: boolean;
   hasPartner: boolean;
   checkPartnerStatus: () => Promise<void>;
+  updatePreferences: (prefs: Record<string, boolean>) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -20,6 +23,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   hasPartner: false,
   checkPartnerStatus: async () => {},
+  updatePreferences: async () => {},
   signOut: async () => {},
 });
 
@@ -62,19 +66,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // After syncing, we set the default axios auth header
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${currentSession.access_token}`;
       await checkPartnerStatus();
+      
+      // Register device for push notifications targeting this user
+      registerIndieID(`${currentSession.user.id}`, 33686, 'Xsjjt4pg3babW3De5ZDNq8');
     } catch (error) {
       console.error('Failed to sync user with backend:', error);
     }
   };
 
   useEffect(() => {
+    OverlayManager.showLoading();
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session) {
-        syncUserWithBackend(session).finally(() => setIsLoading(false));
+        syncUserWithBackend(session).finally(() => {
+          setIsLoading(false);
+          OverlayManager.hideLoading();
+        });
       } else {
         setIsLoading(false);
+        OverlayManager.hideLoading();
       }
     });
 
@@ -96,11 +108,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
+    if (user) {
+      unregisterIndieDevice(`${user.id}`, 33686, 'Xsjjt4pg3babW3De5ZDNq8');
+    }
     await supabase.auth.signOut();
   };
 
+  const updatePreferences = async (prefs: Record<string, boolean>) => {
+    try {
+      await apiClient.patch('/users/profile', { preferences: prefs });
+      // Optimistically update local profile
+      setProfile((prev: any) => ({
+        ...prev,
+        preferences: {
+          ...(prev?.preferences || {}),
+          ...prefs
+        }
+      }));
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, isLoading, hasPartner, checkPartnerStatus, signOut }}>
+    <AuthContext.Provider value={{ session, user, profile, isLoading, hasPartner, checkPartnerStatus, updatePreferences, signOut }}>
       {children}
     </AuthContext.Provider>
   );

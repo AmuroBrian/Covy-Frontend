@@ -3,12 +3,15 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityInd
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../../src/context/AuthContext';
 import apiClient from '../../src/api/axios';
-import { Colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/ThemeContext';
 
 export default function InviteScreen() {
   const { signOut, checkPartnerStatus, profile } = useAuth();
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const { colors } = useTheme();
+  
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
     // Automatically check if a partner connected to us every 5 seconds
@@ -54,7 +57,7 @@ export default function InviteScreen() {
           <Text style={styles.copyText}>TAP TO COPY</Text>
         </TouchableOpacity>
         <View style={styles.waitingContainer}>
-          <ActivityIndicator size="small" color={Colors.primary} />
+          <ActivityIndicator size="small" color={colors.primary} />
           <Text style={styles.waitingText}>Waiting for partner to connect...</Text>
         </View>
       </View>
@@ -64,7 +67,7 @@ export default function InviteScreen() {
       <TextInput
         style={styles.input}
         placeholder="e.g. A1B2C3"
-        placeholderTextColor={Colors.textLight}
+        placeholderTextColor={colors.textLight}
         autoCapitalize="characters"
         maxLength={6}
         value={inviteCode}
@@ -72,7 +75,7 @@ export default function InviteScreen() {
       />
 
       <TouchableOpacity style={styles.primaryButton} onPress={handleConnect} disabled={loading}>
-        {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryButtonText}>Connect Partner</Text>}
+        {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryButtonText}>Connect Partner</Text>}
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
@@ -82,24 +85,24 @@ export default function InviteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.white, padding: 30, justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: 'bold', color: Colors.text, marginBottom: 10, textAlign: 'center' },
-  subtitle: { fontSize: 16, color: Colors.textLight, textAlign: 'center', marginBottom: 30, lineHeight: 22 },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background, padding: 30, justifyContent: 'center' },
+  title: { fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 10, textAlign: 'center' },
+  subtitle: { fontSize: 16, color: colors.textLight, textAlign: 'center', marginBottom: 30, lineHeight: 22 },
   
   myCodeContainer: { marginBottom: 30, alignItems: 'center' },
-  myCodeLabel: { fontSize: 14, color: Colors.textLight, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
-  myCodeBox: { backgroundColor: Colors.primary + '15', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: Colors.primary + '30', width: '100%', alignItems: 'center' },
-  myCodeText: { fontSize: 28, fontWeight: 'bold', color: Colors.primary, letterSpacing: 8 },
-  copyText: { fontSize: 12, color: Colors.primary, marginTop: 5, fontWeight: 'bold' },
+  myCodeLabel: { fontSize: 14, color: colors.textLight, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
+  myCodeBox: { backgroundColor: colors.primary + '15', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: colors.primary + '30', width: '100%', alignItems: 'center' },
+  myCodeText: { fontSize: 28, fontWeight: 'bold', color: colors.primary, letterSpacing: 8 },
+  copyText: { fontSize: 12, color: colors.primary, marginTop: 5, fontWeight: 'bold' },
   waitingContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 15 },
-  waitingText: { color: Colors.primary, marginLeft: 8, fontSize: 14, fontWeight: '500' },
+  waitingText: { color: colors.primary, marginLeft: 8, fontSize: 14, fontWeight: '500' },
   
-  orText: { textAlign: 'center', color: Colors.textLight, marginBottom: 20, fontSize: 12, letterSpacing: 1 },
+  orText: { textAlign: 'center', color: colors.textLight, marginBottom: 20, fontSize: 12, letterSpacing: 1 },
   
-  input: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 20, fontSize: 24, letterSpacing: 5, color: Colors.text, textAlign: 'center', marginBottom: 30 },
-  primaryButton: { backgroundColor: Colors.primary, padding: 18, borderRadius: 12, alignItems: 'center' },
-  primaryButtonText: { color: Colors.white, fontSize: 18, fontWeight: 'bold' },
+  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 20, fontSize: 24, letterSpacing: 5, color: colors.text, textAlign: 'center', marginBottom: 30 },
+  primaryButton: { backgroundColor: colors.primary, padding: 18, borderRadius: 12, alignItems: 'center' },
+  primaryButtonText: { color: colors.white, fontSize: 18, fontWeight: 'bold' },
   logoutButton: { marginTop: 20, padding: 15, alignItems: 'center' },
-  logoutButtonText: { color: Colors.textLight, fontSize: 16, fontWeight: '600' },
+  logoutButtonText: { color: colors.error || '#FF3B30', fontSize: 16, fontWeight: '600' },
 });

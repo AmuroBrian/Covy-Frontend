@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
-import { Colors } from '../../../src/theme/colors';
+import { useTheme } from '../../../src/theme/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getChecklists, getGoals } from '../../../src/api/shared.api';
 import ChecklistsModal from '../../../src/components/shared/ChecklistsModal';
 import GoalsModal from '../../../src/components/shared/GoalsModal';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useRealtime } from '../../../src/context/RealtimeContext';
 
 export default function SharedScreen() {
+  const router = useRouter();
+  const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const { lastSharedUpdate } = useRealtime();
+  
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   
   // Metrics
   const [checklistsCount, setChecklistsCount] = useState(0);
@@ -57,7 +61,7 @@ export default function SharedScreen() {
       <ScrollView 
         style={styles.container} 
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         <Text style={styles.headerTitle}>Shared Space</Text>
         <Text style={styles.headerSubtitle}>Manage your life together</Text>
@@ -65,10 +69,10 @@ export default function SharedScreen() {
         {/* Checklists Card */}
         <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => setChecklistsOpen(true)}>
           <View style={styles.cardTop}>
-            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255, 107, 107, 0.1)' }]}>
-              <Ionicons name="list" size={24} color={Colors.primary} />
+            <View style={[styles.iconContainer, { backgroundColor: colors.primary + '15' }]}>
+              <Ionicons name="list" size={24} color={colors.primary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.textLight} />
+            <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
           </View>
           <Text style={styles.cardTitle}>Checklists</Text>
           <Text style={styles.cardSubtitle}>
@@ -76,13 +80,12 @@ export default function SharedScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* Goals Card */}
         <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => setGoalsOpen(true)}>
           <View style={styles.cardTop}>
             <View style={[styles.iconContainer, { backgroundColor: 'rgba(76, 201, 240, 0.1)' }]}>
               <Ionicons name="flag" size={24} color="#4CC9F0" />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.textLight} />
+            <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
           </View>
           <Text style={styles.cardTitle}>Goals</Text>
           
@@ -97,6 +100,18 @@ export default function SharedScreen() {
             )}
           </View>
         </TouchableOpacity>
+
+        {/* Pet Card */}
+        <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => router.push('/(main)/shared/pet' as any)}>
+          <View style={styles.cardTop}>
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255, 107, 107, 0.1)' }]}>
+              <Ionicons name="paw" size={24} color="#FF6B6B" />
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
+          </View>
+          <Text style={styles.cardTitle}>Our Pet</Text>
+          <Text style={styles.cardSubtitle}>Play, feed, and interact!</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Feature Modals */}
@@ -106,15 +121,15 @@ export default function SharedScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.surface },
+const createStyles = (colors: any) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.surface },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 100 },
-  headerTitle: { fontSize: 32, fontWeight: 'bold', color: Colors.text, marginTop: 10 },
-  headerSubtitle: { fontSize: 16, color: Colors.textLight, marginBottom: 30, marginTop: 5 },
+  headerTitle: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginTop: 10 },
+  headerSubtitle: { fontSize: 16, color: colors.textLight, marginBottom: 30, marginTop: 5 },
   
   card: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.surface,
     padding: 20,
     borderRadius: 20,
     marginBottom: 20,
@@ -137,8 +152,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardTitle: { fontSize: 22, fontWeight: 'bold', color: Colors.text, marginBottom: 5 },
-  cardSubtitle: { fontSize: 15, color: Colors.textLight },
+  cardTitle: { fontSize: 22, fontWeight: 'bold', color: colors.text, marginBottom: 5 },
+  cardSubtitle: { fontSize: 15, color: colors.textLight },
   
   metricRow: {
     flexDirection: 'row',
@@ -148,7 +163,7 @@ const styles = StyleSheet.create({
   miniProgressContainer: {
     width: 60,
     height: 6,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.background,
     borderRadius: 3,
     overflow: 'hidden',
   },

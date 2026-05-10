@@ -2,13 +2,16 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useAuth } from '../../src/context/AuthContext';
 import apiClient from '../../src/api/axios';
-import { Colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/ThemeContext';
 
 export default function OnboardingScreen() {
   const { checkPartnerStatus } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [gender, setGender] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { colors } = useTheme();
+  
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   const handleSubmit = async () => {
     if (!displayName.trim()) {
@@ -44,7 +47,7 @@ export default function OnboardingScreen() {
       <TextInput
         style={styles.input}
         placeholder="Your name or nickname"
-        placeholderTextColor={Colors.textLight}
+        placeholderTextColor={colors.textLight}
         value={displayName}
         onChangeText={setDisplayName}
         maxLength={30}
@@ -64,23 +67,23 @@ export default function OnboardingScreen() {
       </View>
 
       <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
-        {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryButtonText}>Continue</Text>}
+        {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryButtonText}>Continue</Text>}
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.white, padding: 30, justifyContent: 'center' },
-  title: { fontSize: 32, fontWeight: 'bold', color: Colors.text, marginBottom: 10 },
-  subtitle: { fontSize: 16, color: Colors.textLight, marginBottom: 40, lineHeight: 24 },
-  label: { fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 10 },
-  input: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 18, fontSize: 18, color: Colors.text, marginBottom: 30 },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background, padding: 30, justifyContent: 'center' },
+  title: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 10 },
+  subtitle: { fontSize: 16, color: colors.textLight, marginBottom: 40, lineHeight: 24 },
+  label: { fontSize: 16, fontWeight: 'bold', color: colors.text, marginBottom: 10 },
+  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 18, fontSize: 18, color: colors.text, marginBottom: 30 },
   genderContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40 },
-  genderButton: { flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, padding: 15, borderRadius: 12, alignItems: 'center', marginHorizontal: 5 },
-  genderButtonSelected: { backgroundColor: Colors.primary + '15', borderColor: Colors.primary },
-  genderText: { fontSize: 16, color: Colors.textLight, fontWeight: '600' },
-  genderTextSelected: { color: Colors.primary, fontWeight: 'bold' },
-  primaryButton: { backgroundColor: Colors.primary, padding: 18, borderRadius: 12, alignItems: 'center' },
-  primaryButtonText: { color: Colors.white, fontSize: 18, fontWeight: 'bold' },
+  genderButton: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: 15, borderRadius: 12, alignItems: 'center', marginHorizontal: 5 },
+  genderButtonSelected: { backgroundColor: colors.primary + '15', borderColor: colors.primary },
+  genderText: { fontSize: 16, color: colors.textLight, fontWeight: '600' },
+  genderTextSelected: { color: colors.primary, fontWeight: 'bold' },
+  primaryButton: { backgroundColor: colors.primary, padding: 18, borderRadius: 12, alignItems: 'center' },
+  primaryButtonText: { color: colors.white, fontSize: 18, fontWeight: 'bold' },
 });

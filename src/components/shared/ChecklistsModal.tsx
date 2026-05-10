@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, FlatList, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
-import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { getChecklists, createChecklist, deleteChecklist, addChecklistItem, updateChecklistItem, deleteChecklistItem } from '../../api/shared.api';
 import { useRealtime } from '../../context/RealtimeContext';
@@ -11,11 +11,14 @@ interface ChecklistsModalProps {
 }
 
 export default function ChecklistsModal({ visible, onClose }: ChecklistsModalProps) {
+  const { colors } = useTheme();
   const [checklists, setChecklists] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [newListName, setNewListName] = useState('');
   const [newItemNames, setNewItemNames] = useState<{ [key: string]: string }>({});
   const { lastSharedUpdate } = useRealtime();
+  
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -109,7 +112,7 @@ export default function ChecklistsModal({ visible, onClose }: ChecklistsModalPro
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>{item.title}</Text>
         <TouchableOpacity onPress={() => handleDeleteList(item.id)}>
-          <Ionicons name="trash-outline" size={20} color={Colors.error} />
+          <Ionicons name="trash-outline" size={20} color={colors.error} />
         </TouchableOpacity>
       </View>
 
@@ -117,11 +120,11 @@ export default function ChecklistsModal({ visible, onClose }: ChecklistsModalPro
         {item.items?.map((task: any) => (
           <View key={task.id} style={styles.taskRow}>
             <TouchableOpacity onPress={() => handleToggleItem(item.id, task)} style={styles.checkbox}>
-              <Ionicons name={task.isCompleted ? "checkmark-circle" : "ellipse-outline"} size={24} color={task.isCompleted ? Colors.success : Colors.textLight} />
+              <Ionicons name={task.isCompleted ? "checkmark-circle" : "ellipse-outline"} size={24} color={task.isCompleted ? colors.success : colors.textLight} />
             </TouchableOpacity>
             <Text style={[styles.taskText, task.isCompleted && styles.taskCompleted]}>{task.title}</Text>
             <TouchableOpacity onPress={() => handleDeleteItem(item.id, task.id)}>
-              <Ionicons name="close" size={20} color={Colors.textLight} />
+              <Ionicons name="close" size={20} color={colors.textLight} />
             </TouchableOpacity>
           </View>
         ))}
@@ -137,7 +140,7 @@ export default function ChecklistsModal({ visible, onClose }: ChecklistsModalPro
           onSubmitEditing={() => handleAddItem(item.id)}
         />
         <TouchableOpacity style={styles.addButton} onPress={() => handleAddItem(item.id)}>
-          <Ionicons name="add" size={20} color={Colors.white} />
+          <Ionicons name="add" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
     </View>
@@ -148,14 +151,14 @@ export default function ChecklistsModal({ visible, onClose }: ChecklistsModalPro
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Ionicons name="close" size={28} color={Colors.text} />
+            <Ionicons name="close" size={28} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Checklists</Text>
           <View style={{ width: 28 }} />
         </View>
 
         {loading ? (
-          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 50 }} />
         ) : (
           <FlatList
             data={checklists}
@@ -184,25 +187,25 @@ export default function ChecklistsModal({ visible, onClose }: ChecklistsModalPro
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.surface },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.border, backgroundColor: Colors.white },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   closeBtn: { padding: 5 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: colors.text },
   listContent: { padding: 20 },
   createContainer: { flexDirection: 'row', marginBottom: 20 },
-  createInput: { flex: 1, backgroundColor: Colors.white, borderRadius: 12, paddingHorizontal: 15, height: 48, marginRight: 10, borderWidth: 1, borderColor: Colors.border },
-  createBtn: { backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center' },
-  createBtnText: { color: Colors.white, fontWeight: 'bold' },
-  card: { backgroundColor: Colors.white, borderRadius: 15, padding: 15, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  createInput: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 15, height: 48, marginRight: 10, borderWidth: 1, borderColor: colors.border },
+  createBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center' },
+  createBtnText: { color: colors.white, fontWeight: 'bold' },
+  card: { backgroundColor: colors.surface, borderRadius: 15, padding: 15, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text },
+  cardTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text },
   itemsContainer: { marginBottom: 15 },
   taskRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   checkbox: { marginRight: 10 },
-  taskText: { flex: 1, fontSize: 16, color: Colors.text },
-  taskCompleted: { textDecorationLine: 'line-through', color: Colors.textLight },
+  taskText: { flex: 1, fontSize: 16, color: colors.text },
+  taskCompleted: { textDecorationLine: 'line-through', color: colors.textLight },
   addTaskContainer: { flexDirection: 'row', alignItems: 'center' },
-  addTaskInput: { flex: 1, backgroundColor: Colors.surface, borderRadius: 10, paddingHorizontal: 15, height: 40, marginRight: 10 },
-  addButton: { backgroundColor: Colors.primary, width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }
+  addTaskInput: { flex: 1, backgroundColor: colors.background, borderRadius: 10, paddingHorizontal: 15, height: 40, marginRight: 10 },
+  addButton: { backgroundColor: colors.primary, width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }
 });

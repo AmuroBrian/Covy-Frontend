@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
-import { Colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
@@ -14,7 +14,10 @@ import { Alert, ActivityIndicator } from 'react-native';
 
 function CustomDrawerContent(props: any) {
   const { profile, signOut, checkPartnerStatus } = useAuth();
+  const { colors } = useTheme();
   const [uploading, setUploading] = React.useState(false);
+
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   const handleUploadAvatar = async () => {
     try {
@@ -72,12 +75,12 @@ function CustomDrawerContent(props: any) {
           <TouchableOpacity onPress={handleUploadAvatar} disabled={uploading}>
             {uploading ? (
               <View style={styles.avatarPlaceholder}>
-                <ActivityIndicator color={Colors.white} />
+                <ActivityIndicator color={colors.white} />
               </View>
             ) : profile?.avatarUrl ? (
               <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
             ) : (
-              <Ionicons name="person-circle" size={80} color={Colors.primary} />
+              <Ionicons name="person-circle" size={80} color={colors.primary} />
             )}
           </TouchableOpacity>
           <Text style={styles.appName}>Covy</Text>
@@ -93,7 +96,7 @@ function CustomDrawerContent(props: any) {
       {/* Sign Out Button at Bottom */}
       <View style={styles.bottomDrawerSection}>
         <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
-          <Ionicons name="log-out-outline" size={22} color={Colors.error || '#FF3B30'} />
+          <Ionicons name="log-out-outline" size={22} color={colors.error || '#FF3B30'} />
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
@@ -102,13 +105,16 @@ function CustomDrawerContent(props: any) {
 }
 
 export default function MainLayout() {
+  const { colors } = useTheme();
+
   return (
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
-        drawerActiveTintColor: Colors.primary,
-        drawerInactiveTintColor: Colors.text,
+        drawerActiveTintColor: colors.primary,
+        drawerInactiveTintColor: colors.text,
+        drawerStyle: { backgroundColor: colors.background },
         drawerLabelStyle: { fontSize: 16, fontWeight: '500', marginLeft: -10 },
       }}
     >
@@ -140,25 +146,25 @@ export default function MainLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   drawerHeader: {
-    backgroundColor: Colors.primary + '10',
+    backgroundColor: colors.primary + '10',
     padding: 20,
     paddingTop: 40,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: colors.border,
     marginBottom: 10,
   },
   appName: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: Colors.primary,
+    color: colors.primary,
     marginTop: 10,
   },
   userName: {
     fontSize: 14,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginTop: 5,
   },
   avatarImage: {
@@ -166,13 +172,13 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
   },
   avatarPlaceholder: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.border,
+    backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -181,7 +187,7 @@ const styles = StyleSheet.create({
   },
   bottomDrawerSection: {
     marginBottom: 15,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
     borderTopWidth: 1,
     padding: 20,
   },
@@ -193,7 +199,7 @@ const styles = StyleSheet.create({
   signOutText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.error || '#FF3B30',
+    color: colors.error || '#FF3B30',
     marginLeft: 15,
   },
 });

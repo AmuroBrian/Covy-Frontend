@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { supabase } from '../../src/api/supabase';
-import { Colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/ThemeContext';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 
@@ -12,6 +12,9 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { colors } = useTheme();
+  
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   const handleAuth = async (isSignUp: boolean) => {
     if (!email || !password) {
@@ -83,7 +86,7 @@ export default function LoginScreen() {
         <TextInput
           style={styles.input}
           placeholder="Email address"
-          placeholderTextColor={Colors.textLight}
+          placeholderTextColor={colors.textLight}
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
@@ -92,7 +95,7 @@ export default function LoginScreen() {
         <TextInput
           style={styles.input}
           placeholder="Password"
-          placeholderTextColor={Colors.textLight}
+          placeholderTextColor={colors.textLight}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
@@ -114,17 +117,17 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.primary },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.primary },
   logoContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   logo: { width: 180, height: 180, borderRadius: 30, marginBottom: 20 },
-  tagline: { color: Colors.white, fontSize: 18, fontWeight: '600', opacity: 0.9 },
-  formContainer: { backgroundColor: Colors.white, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, paddingBottom: 50 },
-  input: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 16, fontSize: 16, color: Colors.text, marginBottom: 15 },
-  primaryButton: { backgroundColor: Colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
-  primaryButtonText: { color: Colors.white, fontSize: 16, fontWeight: 'bold' },
+  tagline: { color: colors.white, fontSize: 18, fontWeight: '600', opacity: 0.9 },
+  formContainer: { backgroundColor: colors.background, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, paddingBottom: 50 },
+  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 16, fontSize: 16, color: colors.text, marginBottom: 15 },
+  primaryButton: { backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  primaryButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold' },
   secondaryButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 5 },
-  secondaryButtonText: { color: Colors.primary, fontSize: 16, fontWeight: 'bold' },
+  secondaryButtonText: { color: colors.primary, fontSize: 16, fontWeight: 'bold' },
   facebookButton: { backgroundColor: '#1877F2', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 15 },
-  facebookButtonText: { color: Colors.white, fontSize: 16, fontWeight: 'bold' },
+  facebookButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold' },
 });

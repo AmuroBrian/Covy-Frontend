@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { KeyboardAvoidingView, Platform, ScrollView, Image as RNImage, Animated } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import Svg, { Circle, ClipPath, Defs, Image as SvgImage } from 'react-native-svg';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../../../src/context/AuthContext';
 import MapView, { PROVIDER_GOOGLE, Region, Marker } from 'react-native-maps';
@@ -13,24 +14,88 @@ import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplet
 import apiClient from '../../../src/api/axios';
 import { useNavigation, useRouter } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
-import { Colors } from '../../../src/theme/colors';
+import { useTheme } from '../../../src/theme/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRealtime } from '../../../src/context/RealtimeContext';
+
+import NudgeButton from '../../../src/components/shared/NudgeButton';
+
+const getActivityFromSpeed = (speed?: number | null) => {
+  if (speed === undefined || speed === null || speed < 1.0) return null;
+  if (speed < 6.5) return 'Walking';
+  return 'Driving';
+};
+
+const getActivityIcon = (activity: string | null) => {
+  if (activity === 'Walking') return 'walk';
+  if (activity === 'Driving') return 'car';
+  return null;
+};
+
+const AvatarMarker = ({ coordinate, uri, fallbackColor, speed, onPress }: { coordinate: any, uri?: string, fallbackColor: string, speed?: number, onPress?: (e: any) => void }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const activity = getActivityFromSpeed(speed);
+  const icon = getActivityIcon(activity);
+  
+  return (
+    <Marker 
+      coordinate={coordinate} 
+      tracksViewChanges={!isLoaded}
+      onPress={onPress}
+      zIndex={activity ? 999 : 1}
+    >
+      <View style={{ width: 50, height: 50, justifyContent: 'center', alignItems: 'center' }}>
+        {uri ? (
+          <RNImage 
+            source={{ uri }} 
+            style={{ width: 46, height: 46, borderRadius: 23, borderWidth: 3, borderColor: fallbackColor }}
+            onLoad={() => setIsLoaded(true)}
+          />
+        ) : (
+          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: fallbackColor, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white' }}>
+            <Ionicons name="person" size={24} color="white" />
+          </View>
+        )}
+        
+        {icon && (
+          <View style={{
+            position: 'absolute',
+            bottom: -2,
+            right: -2,
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            justifyContent: 'center',
+            alignItems: 'center',
+            borderWidth: 2,
+            borderColor: 'white',
+            backgroundColor: activity === 'Driving' ? '#0ea5e9' : '#10b981'
+          }}>
+            <Ionicons name={icon as any} size={14} color="white" />
+          </View>
+        )}
+      </View>
+    </Marker>
+  );
+};
 
 export default function MapScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const mapRef = useRef<MapView>(null);
   const { session, profile, checkPartnerStatus } = useAuth();
-  const { pingLocation, partnerLocation: contextPartnerLocation } = useRealtime();
+  const { pingLocation, partnerLocation: contextPartnerLocation, sendNudge } = useRealtime();
   const [myLocation, setMyLocation] = useState<{lat: number, lng: number} | null>(null);
   const [myBattery, setMyBattery] = useState<number>(100);
   const [isCharging, setIsCharging] = useState<boolean>(false);
-  const [partnerLocation, setPartnerLocation] = useState<{lat: number, lng: number, battery: number, isCharging?: boolean} | null>(null);
+  const [partnerLocation, setPartnerLocation] = useState<{lat: number, lng: number, battery: number, isCharging?: boolean, speed?: number} | null>(null);
   interface SheetData { type: 'partner' | 'place'; data: any; address?: string; }
   const [sheetData, setSheetData] = useState<SheetData | null>(null);
   const sheetAnim = useRef(new Animated.Value(400)).current;
   const router = useRouter();
+
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   const openSheet = (data: SheetData) => {
     setSheetData(data);
@@ -44,6 +109,33 @@ export default function MapScreen() {
   const [isTargetVisible, setIsTargetVisible] = useState(false);
   const targetOpacity = useRef(new Animated.Value(0)).current;
   const targetScale = useRef(new Animated.Value(0.5)).current;
+  
+  const myLocationRef = useRef<{lat: number, lng: number} | null>(null);
+  const mySpeedRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    myLocationRef.current = myLocation;
+  }, [myLocation]);
+
+  useEffect(() => {
+    const syncBatteryTimer = setInterval(async () => {
+      try {
+        const bat = await Battery.getBatteryLevelAsync();
+        const batState = await Battery.getBatteryStateAsync();
+        const isDeviceCharging = batState === Battery.BatteryState.CHARGING || batState === Battery.BatteryState.FULL;
+        const batPercent = bat >= 0 ? Math.round(bat * 100) : 100;
+        
+        setMyBattery(batPercent);
+        setIsCharging(isDeviceCharging);
+
+        if (myLocationRef.current) {
+          pingLocation(myLocationRef.current.lat, myLocationRef.current.lng, batPercent, isDeviceCharging, mySpeedRef.current ?? undefined);
+        }
+      } catch (err) {}
+    }, 10000); // Send battery status every 10 seconds regardless of movement
+
+    return () => clearInterval(syncBatteryTimer);
+  }, [pingLocation]);
 
   useEffect(() => {
     if (isTargetVisible) {
@@ -97,8 +189,9 @@ export default function MapScreen() {
       setPartnerLocation({
         lat: contextPartnerLocation.lat,
         lng: contextPartnerLocation.lng,
-        battery: contextPartnerLocation.battery || 100,
-        isCharging: contextPartnerLocation.isCharging
+        battery: contextPartnerLocation.battery ?? 100,
+        isCharging: contextPartnerLocation.isCharging ?? false,
+        speed: contextPartnerLocation.speed
       });
     }
   }, [contextPartnerLocation]);
@@ -107,7 +200,13 @@ export default function MapScreen() {
       try {
         const res = await apiClient.get('/locations/latest');
         if (res.data && res.data.latitude) {
-          setPartnerLocation({ lat: res.data.latitude, lng: res.data.longitude, battery: res.data.battery || 100 });
+          setPartnerLocation({ 
+            lat: res.data.latitude, 
+            lng: res.data.longitude, 
+            battery: res.data.battery ?? 100,
+            isCharging: res.data.isCharging ?? false,
+            speed: res.data.speed
+          });
         }
       } catch (err) {}
     };
@@ -131,7 +230,8 @@ export default function MapScreen() {
           setMyBattery(batPercent);
           setIsCharging(isDeviceCharging);
           setMyLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-          pingLocation(loc.coords.latitude, loc.coords.longitude, batPercent, isDeviceCharging);
+          mySpeedRef.current = loc.coords.speed;
+          pingLocation(loc.coords.latitude, loc.coords.longitude, batPercent, isDeviceCharging, loc.coords.speed ?? undefined);
         }
       );
     })();
@@ -260,10 +360,10 @@ export default function MapScreen() {
       <MapView
         onPress={closeSheet}
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={styles.map}
         initialRegion={region}
-        showsUserLocation={true}
+        showsUserLocation={false}
         showsMyLocationButton={false}
         onRegionChangeComplete={(r) => setRegion(r)}
       >
@@ -285,58 +385,54 @@ export default function MapScreen() {
             }}
           >
             <View style={styles.savedPlaceMarker}>
-              <Ionicons name={(place.icon as any) || 'bookmark'} size={20} color={Colors.white} />
+              <Ionicons name={(place.icon as any) || 'bookmark'} size={20} color={colors.white} />
             </View>
           </Marker>
         ))}
 
         {myLocation && (
-          <Marker coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}>
-            <View style={styles.markerContainer}>
-              {profile?.avatarUrl ? (
-                <ExpoImage source={{ uri: profile.avatarUrl }} style={styles.markerAvatar} />
-              ) : (
-                <View style={styles.markerFallback}><Ionicons name="person" size={20} color="white" /></View>
-              )}
-            </View>
-          </Marker>
+          <AvatarMarker 
+            coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}
+            uri={profile?.avatarUrl}
+            fallbackColor={colors.primary}
+            speed={mySpeedRef.current ?? undefined}
+          />
         )}
 
         {partnerLocation && (
-          <Marker 
+          <AvatarMarker 
             coordinate={{ latitude: partnerLocation.lat, longitude: partnerLocation.lng }}
+            uri={profile?.couple?.users?.find((u: any) => u.id !== profile.id)?.avatarUrl}
+            fallbackColor={colors.secondary}
+            speed={partnerLocation.speed}
             onPress={(e) => {
               e.stopPropagation();
               const partnerProfile = profile?.couple?.users?.find((u: any) => u.id !== profile.id);
-              openSheet({ type: 'partner', data: { ...partnerProfile, battery: partnerLocation.battery || 100, isCharging: partnerLocation.isCharging } });
+              openSheet({ type: 'partner', data: { ...partnerProfile, battery: partnerLocation.battery ?? 100, isCharging: partnerLocation.isCharging ?? false, speed: partnerLocation.speed } });
             }}
-          >
-            <View style={[styles.markerContainer, styles.partnerMarkerContainer]}>
-              {profile?.couple?.users?.find((u: any) => u.id !== profile.id)?.avatarUrl ? (
-                <ExpoImage source={{ uri: profile.couple.users.find((u: any) => u.id !== profile.id).avatarUrl }} style={styles.markerAvatar} />
-              ) : (
-                <View style={styles.markerFallback}><Ionicons name="heart" size={20} color="white" /></View>
-              )}
-            </View>
-          </Marker>
+          />
         )}
 
       </MapView>
 
       <View style={styles.fixedCenterTarget} pointerEvents="none">
         <Animated.View style={[styles.targetMarker, { opacity: targetOpacity, transform: [{ scale: targetScale }] }]}>
-          <Ionicons name="location" size={50} color={Colors.primary} />
+          <Ionicons name="location" size={50} color={colors.primary} />
         </Animated.View>
       </View>
 
       <View style={[styles.topHeaderContainer, { top: insets.top + 10 }]}>
         <View style={styles.batteryContainer}>
-          <Ionicons name={isCharging ? "battery-charging" : (myBattery > 20 ? "battery-full" : "battery-dead")} size={20} color={isCharging ? '#4CD964' : (myBattery > 20 ? Colors.primary : Colors.secondary)} />
+          <Ionicons name={isCharging ? "battery-charging" : (myBattery > 20 ? "battery-full" : "battery-dead")} size={20} color={isCharging ? colors.success : (myBattery > 20 ? colors.primary : colors.secondary)} />
           <Text style={styles.statusText}>{myBattery}% {isCharging ? '(Charging)' : ''}</Text>
         </View>
 
         <TouchableOpacity onPress={openSidebar}>
-          <Ionicons name="person-circle" size={45} color={Colors.primary} />
+          {profile?.avatarUrl ? (
+            <ExpoImage source={{ uri: profile.avatarUrl }} style={styles.topHeaderAvatar} />
+          ) : (
+            <Ionicons name="person-circle" size={45} color={colors.primary} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -368,7 +464,7 @@ export default function MapScreen() {
           Alert.alert('Search Error', 'Failed to fetch places. Please check your API key or network.');
         }}
         renderLeftButton={() => (
-          <Ionicons name="search" size={20} color={Colors.textLight} style={styles.searchIcon} />
+          <Ionicons name="search" size={20} color={colors.textLight} style={styles.searchIcon} />
         )}
         styles={{
           container: {
@@ -384,25 +480,27 @@ export default function MapScreen() {
           row: styles.searchRow,
         }}
         textInputProps={{
-          placeholderTextColor: Colors.textLight,
+          placeholderTextColor: colors.textLight,
         }}
         enablePoweredByContainer={false}
         keyboardShouldPersistTaps="always"
       />
 
       <View style={[styles.fabContainer, { bottom: insets.bottom + 90 }]}>
+        <NudgeButton isFloating={true} style={{ marginBottom: 15 }} />
+
         <TouchableOpacity 
           style={styles.myLocationFab}
           onPress={handleGoToMyLocation}
         >
-          <Ionicons name="navigate" size={24} color={Colors.primary} />
+          <Ionicons name="navigate" size={24} color={colors.primary} />
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.saveFab}
           onPress={() => setModalVisible(true)}
         >
-          <Ionicons name="bookmark" size={24} color={Colors.white} />
+          <Ionicons name="bookmark" size={24} color={colors.white} />
         </TouchableOpacity>
       </View>
 
@@ -412,11 +510,21 @@ export default function MapScreen() {
             <ExpoImage source={{ uri: sheetData.data.avatarUrl }} style={styles.sheetAvatar} />
             <Text style={styles.sheetTitle}>{sheetData.data.displayName || 'Partner'}</Text>
             <View style={styles.sheetInfoRowCenter}>
-              <Ionicons name={sheetData.data.isCharging ? "battery-charging" : "battery-half"} size={20} color={sheetData.data.isCharging ? '#4CD964' : (sheetData.data.battery > 20 ? Colors.primary : Colors.secondary)} />
+              <Ionicons name={sheetData.data.isCharging ? "battery-charging" : "battery-half"} size={20} color={sheetData.data.isCharging ? colors.success : (sheetData.data.battery > 20 ? colors.primary : colors.secondary)} />
               <Text style={styles.sheetText}>{sheetData.data.battery}% Battery {sheetData.data.isCharging ? '(Charging)' : ''}</Text>
             </View>
-            <TouchableOpacity style={styles.sheetButton} onPress={() => { closeSheet(); router.push('/(main)/tabs/chat'); }}>
-              <Ionicons name="chatbubbles" size={20} color={Colors.white} />
+            
+            {getActivityFromSpeed(sheetData.data.speed) && (
+              <View style={[styles.sheetInfoRowCenter, { marginTop: -10 }]}>
+                <Ionicons name={getActivityIcon(getActivityFromSpeed(sheetData.data.speed)) as any} size={20} color={getActivityFromSpeed(sheetData.data.speed) === 'Driving' ? '#0ea5e9' : '#10b981'} />
+                <Text style={styles.sheetText}>
+                  {getActivityFromSpeed(sheetData.data.speed)}
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity style={styles.sheetButton} onPress={() => { closeSheet(); /* open chat logic */ }}>
+              <Ionicons name="chatbubbles" size={20} color={colors.white} />
               <Text style={styles.sheetButtonText}>Message</Text>
             </TouchableOpacity>
           </View>
@@ -426,7 +534,7 @@ export default function MapScreen() {
           <View style={styles.sheetContentLeft}>
             <View style={styles.placeHeaderRow}>
               <View style={styles.placeIconCircleLarge}>
-                <Ionicons name={sheetData.data.icon as any || 'bookmark'} size={32} color={Colors.white} />
+                <Ionicons name={sheetData.data.icon as any || 'bookmark'} size={32} color={colors.white} />
               </View>
               <View style={styles.placeHeaderText}>
                 <Text style={styles.sheetTitleLeft}>{sheetData.data.label}</Text>
@@ -449,7 +557,7 @@ export default function MapScreen() {
             <View style={styles.premiumDetailsGrid}>
               <View style={styles.premiumDetailCard}>
                 <View style={styles.detailIconBox}>
-                  <Ionicons name="time" size={18} color={Colors.primary} />
+                  <Ionicons name="time" size={18} color={colors.primary} />
                 </View>
                 <View>
                   <Text style={styles.detailCardLabel}>Last Visited</Text>
@@ -458,7 +566,7 @@ export default function MapScreen() {
               </View>
               <View style={styles.premiumDetailCard}>
                 <View style={styles.detailIconBox}>
-                  <Ionicons name="battery-half" size={18} color={Colors.primary} />
+                  <Ionicons name="battery-half" size={18} color={colors.primary} />
                 </View>
                 <View>
                   <Text style={styles.detailCardLabel}>Last Battery</Text>
@@ -468,13 +576,13 @@ export default function MapScreen() {
             </View>
 
             <View style={styles.sheetActionRowPremium}>
-              <TouchableOpacity style={[styles.sheetButtonPremium, { backgroundColor: '#EAEAEA' }]} onPress={() => handleEditPlaceClick(sheetData.data)}>
-                <Ionicons name="pencil" size={18} color={Colors.text} />
-                <Text style={[styles.sheetButtonTextPremium, { color: Colors.text }]}>Edit Details</Text>
+              <TouchableOpacity style={[styles.sheetButtonPremium, { backgroundColor: colors.border }]} onPress={() => handleEditPlaceClick(sheetData.data)}>
+                <Ionicons name="pencil" size={18} color={colors.text} />
+                <Text style={[styles.sheetButtonTextPremium, { color: colors.text }]}>Edit Details</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.sheetButtonPremium, { backgroundColor: Colors.error }]} onPress={() => handleDeletePlace(sheetData.data.id)}>
-                <Ionicons name="trash" size={18} color={Colors.white} />
-                <Text style={[styles.sheetButtonTextPremium, { color: Colors.white }]}>Remove</Text>
+              <TouchableOpacity style={[styles.sheetButtonPremium, { backgroundColor: colors.error }]} onPress={() => handleDeletePlace(sheetData.data.id)}>
+                <Ionicons name="trash" size={18} color={colors.white} />
+                <Text style={[styles.sheetButtonTextPremium, { color: colors.white }]}>Remove</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -484,10 +592,12 @@ export default function MapScreen() {
       <Modal visible={modalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
+            <View style={styles.modalHeaderIconContainer}>
+              <Ionicons name="location" size={32} color={colors.primary} />
+            </View>
             <Text style={styles.modalTitle}>{editPlaceId ? 'Edit Location' : 'Save Location'}</Text>
-            <Text style={styles.modalSubtitle}>Enter a label to save the current map center.</Text>
+            <Text style={styles.modalSubtitle}>Give this place a recognizable name and icon to get notified when your partner arrives.</Text>
             
-            <Text style={styles.iconLabel}>Select Icon</Text>
             <View style={styles.iconRow}>
               {availableIcons.map((ic) => (
                 <TouchableOpacity 
@@ -498,19 +608,22 @@ export default function MapScreen() {
                     setSelectedIcon(ic);
                   }}
                 >
-                  <Ionicons name={ic as any} size={24} color={selectedIcon === ic ? Colors.primary : Colors.textLight} />
+                  <Ionicons name={ic as any} size={22} color={selectedIcon === ic ? colors.primary : colors.textLight} />
                 </TouchableOpacity>
               ))}
             </View>
 
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Home, Gym, Favorite Cafe"
-              placeholderTextColor={Colors.textLight}
-              value={placeLabel}
-              onChangeText={setPlaceLabel}
-              autoFocus
-            />
+            <View style={styles.inputContainer}>
+              <Ionicons name="text-outline" size={20} color={colors.textLight} style={styles.inputIcon} />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Home, Gym, Cafe"
+                placeholderTextColor={colors.textLight}
+                value={placeLabel}
+                onChangeText={setPlaceLabel}
+                autoFocus
+              />
+            </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalButtonCancel} onPress={() => { setModalVisible(false); setEditPlaceId(null); setPlaceLabel(''); }}>
@@ -522,7 +635,7 @@ export default function MapScreen() {
                 onPress={handleSavePlace}
                 disabled={isSaving}
               >
-                {isSaving ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.modalButtonTextSave}>{editPlaceId ? 'Update' : 'Save'}</Text>}
+                {isSaving ? <ActivityIndicator color={colors.white} /> : <Text style={styles.modalButtonTextSave}>{editPlaceId ? 'Update' : 'Save'}</Text>}
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
@@ -532,13 +645,12 @@ export default function MapScreen() {
   );
 }
 
-const extraStyles = StyleSheet.create({
-
+const createStyles = (colors: any) => StyleSheet.create({
   bottomSheet: {
     position: 'absolute',
     left: 15,
     right: 15,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 25,
     padding: 20,
     shadowColor: '#000',
@@ -557,12 +669,12 @@ const extraStyles = StyleSheet.create({
     borderRadius: 40,
     marginBottom: 15,
     borderWidth: 3,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
   },
   sheetTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 10,
   },
   sheetInfoRowCenter: {
@@ -573,11 +685,11 @@ const extraStyles = StyleSheet.create({
   },
   sheetText: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
   },
   sheetButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
@@ -588,7 +700,7 @@ const extraStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   sheetButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -599,7 +711,7 @@ const extraStyles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
@@ -607,12 +719,12 @@ const extraStyles = StyleSheet.create({
   sheetTitleLeft: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 5,
   },
   sheetSubtitleLeft: {
     fontSize: 14,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginBottom: 20,
   },
   sheetInfoRowLeft: {
@@ -623,7 +735,7 @@ const extraStyles = StyleSheet.create({
   },
   sheetSmallText: {
     fontSize: 14,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '500',
   },
   placeHeaderRow: {
@@ -637,18 +749,18 @@ const extraStyles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: colors.border,
     width: '100%',
     marginVertical: 15,
   },
   savedByPremiumContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background,
     padding: 12,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: colors.border,
   },
   savedByAvatarPremium: {
     width: 36,
@@ -658,14 +770,14 @@ const extraStyles = StyleSheet.create({
   },
   savedByLabelPremium: {
     fontSize: 12,
-    color: Colors.textLight,
+    color: colors.textLight,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     fontWeight: '600',
   },
   savedByTextPremium: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '700',
   },
   premiumDetailsGrid: {
@@ -678,7 +790,7 @@ const extraStyles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background,
     padding: 12,
     borderRadius: 16,
     gap: 10,
@@ -687,19 +799,19 @@ const extraStyles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: 'rgba(2, 212, 172, 0.1)',
+    backgroundColor: colors.primary + '15',
     alignItems: 'center',
     justifyContent: 'center',
   },
   detailCardLabel: {
     fontSize: 11,
-    color: Colors.textLight,
+    color: colors.textLight,
     fontWeight: '600',
     marginBottom: 2,
   },
   detailCardValue: {
     fontSize: 14,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '700',
   },
   sheetActionRowPremium: {
@@ -725,7 +837,7 @@ const extraStyles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
     gap: 8,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.border,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 20,
@@ -752,46 +864,72 @@ const extraStyles = StyleSheet.create({
     gap: 8,
   },
   sheetButtonTextSmall: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 14,
     fontWeight: 'bold',
   },
 
   savedByText: {
     fontSize: 13,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
   },
 
-  markerContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 3,
-    borderColor: Colors.primary,
-    backgroundColor: Colors.white,
+  markerOuter: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 4,
+    borderWidth: 2.5,
+    backgroundColor: colors.surface,
+  },
+  myMarkerOuter: {
+    borderColor: colors.primary,
+  },
+  partnerMarkerOuter: {
+    borderColor: colors.secondary,
+  },
+  svgMarkerWrapper: {
+    width: 48,
+    height: 48,
+    backgroundColor: 'transparent',
+  },
+  markerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    resizeMode: 'cover',
+  },
+  markerFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activityBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
   },
   savedPlaceMarker: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: Colors.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 4,
+    borderColor: colors.surface,
   },
   targetMarker: {
     paddingBottom: 25, // offset to point exactly at center
@@ -811,53 +949,10 @@ const extraStyles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 100,
   },
-  partnerMarkerContainer: {
-    borderColor: Colors.secondary || '#FF2D55',
-  },
-  markerAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-  },
-  markerFallback: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconLabel: {
-    fontSize: 14,
-    color: Colors.textLight,
-    marginBottom: 10,
-    marginTop: -5,
-  },
-  iconRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconButtonSelected: {
-    backgroundColor: Colors.primary + '20',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-});
 
-const styles = StyleSheet.create({
-  ...extraStyles,
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   map: {
     ...StyleSheet.absoluteFillObject,
@@ -873,7 +968,7 @@ const styles = StyleSheet.create({
   batteryContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: colors.surface,
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
@@ -886,11 +981,23 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: colors.text,
     marginLeft: 5,
   },
+  topHeaderAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
   textInputContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: colors.surface,
     borderRadius: 25,
     paddingHorizontal: 15,
     flexDirection: 'row',
@@ -909,7 +1016,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     backgroundColor: 'transparent',
     height: 48,
     borderRadius: 25,
@@ -919,7 +1026,7 @@ const styles = StyleSheet.create({
     top: 60,
     left: 0,
     right: 0,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 15,
     elevation: 10,
     shadowColor: '#000',
@@ -939,7 +1046,7 @@ const styles = StyleSheet.create({
     gap: 15,
   },
   myLocationFab: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.surface,
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -952,7 +1059,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   saveFab: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -971,60 +1078,110 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: Colors.white,
-    padding: 25,
-    borderRadius: 16,
-    width: '80%',
+    backgroundColor: colors.surface,
+    padding: 24,
+    borderRadius: 24,
+    width: '85%',
+    maxWidth: 400,
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeaderIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 10,
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   modalSubtitle: {
     fontSize: 14,
-    color: Colors.textLight,
-    marginBottom: 20,
+    color: colors.textLight,
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  iconRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 6,
+  },
+  iconButtonSelected: {
+    backgroundColor: colors.primary + '20',
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    width: '100%',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   modalInput: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    padding: 15,
+    flex: 1,
+    paddingVertical: 16,
     fontSize: 16,
-    marginBottom: 20,
-    color: Colors.text,
+    color: colors.text,
   },
   modalActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    width: '100%',
   },
   modalButtonCancel: {
-    padding: 10,
-    marginRight: 10,
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    marginRight: 12,
   },
   modalButtonTextCancel: {
-    color: Colors.textLight,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
   modalButtonSave: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+    flex: 1,
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalButtonTextSave: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: 'bold',
-  },
+  }
 });

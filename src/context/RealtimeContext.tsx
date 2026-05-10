@@ -12,10 +12,17 @@ interface RealtimeContextType {
   deleteMessage: (messageId: string) => Promise<void>;
   fetchMessageHistory: () => Promise<void>;
   messages: any[];
-  partnerLocation: { lat: number; lng: number; battery?: number; isCharging?: boolean } | null;
+  partnerLocation: { lat: number; lng: number; battery?: number; isCharging?: boolean; speed?: number } | null;
   partnerPresence: { isOnline: boolean; lastActive?: string } | null;
-  pingLocation: (lat: number, lng: number, battery: number, isCharging: boolean) => void;
+  pingLocation: (lat: number, lng: number, battery: number, isCharging: boolean, speed?: number) => void;
   lastSharedUpdate: number;
+  sendNudge: (emoji: string) => void;
+  lastNudge: { emoji: string, timestamp: number } | null;
+  petState: any | null;
+  getPetState: () => void;
+  feedPet: () => void;
+  patPet: () => void;
+  togglePetSleep: () => void;
 }
 
 const RealtimeContext = createContext<RealtimeContextType>({
@@ -30,6 +37,13 @@ const RealtimeContext = createContext<RealtimeContextType>({
   partnerPresence: null,
   pingLocation: () => {},
   lastSharedUpdate: Date.now(),
+  sendNudge: () => {},
+  lastNudge: null,
+  petState: null,
+  getPetState: () => {},
+  feedPet: () => {},
+  patPet: () => {},
+  togglePetSleep: () => {},
 });
 
 export const RealtimeProvider = ({ children }: { children: React.ReactNode }) => {
@@ -37,9 +51,11 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  const [partnerLocation, setPartnerLocation] = useState<{lat: number, lng: number, battery?: number, isCharging?: boolean} | null>(null);
+  const [partnerLocation, setPartnerLocation] = useState<{lat: number, lng: number, battery?: number, isCharging?: boolean, speed?: number} | null>(null);
   const [partnerPresence, setPartnerPresence] = useState<{isOnline: boolean, lastActive?: string} | null>(null);
   const [lastSharedUpdate, setLastSharedUpdate] = useState<number>(Date.now());
+  const [lastNudge, setLastNudge] = useState<{ emoji: string, timestamp: number } | null>(null);
+  const [petState, setPetState] = useState<any | null>(null);
 
   useEffect(() => {
     if (!session || !hasPartner) {
@@ -84,7 +100,8 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
           lat: location.lat, 
           lng: location.lng, 
           battery: location.battery, 
-          isCharging: location.isCharging 
+          isCharging: location.isCharging,
+          speed: location.speed,
         });
       } catch (e) {
         console.error('Failed to handle incoming location', e);
@@ -117,6 +134,14 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
 
     newSocket.on('shared_space_update', () => {
       setLastSharedUpdate(Date.now());
+    });
+
+    newSocket.on('receive_nudge', (nudge) => {
+      setLastNudge({ emoji: nudge.emoji, timestamp: Date.now() });
+    });
+
+    newSocket.on('pet_state_update', (state) => {
+      setPetState(state);
     });
 
     setSocket(newSocket);
@@ -206,9 +231,31 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
-  const pingLocation = async (lat: number, lng: number, battery: number, isCharging: boolean) => {
+  const pingLocation = async (lat: number, lng: number, battery: number, isCharging: boolean, speed?: number) => {
     if (!socket || !isConnected) return;
-    socket.emit('ping_location', { lat, lng, battery, isCharging });
+    socket.emit('ping_location', { lat, lng, battery, isCharging, speed });
+  };
+
+  const sendNudge = (emoji: string) => {
+    if (socket && isConnected) {
+      socket.emit('send_nudge', { emoji });
+    }
+  };
+
+  const getPetState = () => {
+    if (socket && isConnected) socket.emit('get_pet_state');
+  };
+
+  const feedPet = () => {
+    if (socket && isConnected) socket.emit('feed_pet');
+  };
+
+  const patPet = () => {
+    if (socket && isConnected) socket.emit('pat_pet');
+  };
+
+  const togglePetSleep = () => {
+    if (socket && isConnected) socket.emit('toggle_pet_sleep');
   };
 
   return (
@@ -223,7 +270,14 @@ export const RealtimeProvider = ({ children }: { children: React.ReactNode }) =>
       partnerLocation, 
       partnerPresence,
       pingLocation,
-      lastSharedUpdate
+      lastSharedUpdate,
+      sendNudge,
+      lastNudge,
+      petState,
+      getPetState,
+      feedPet,
+      patPet,
+      togglePetSleep,
     }}>
       {children}
     </RealtimeContext.Provider>

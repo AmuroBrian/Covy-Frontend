@@ -3,7 +3,7 @@ import { View, StyleSheet, TouchableOpacity, Dimensions, Platform, Text } from '
 import Svg, { Path } from 'react-native-svg';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
@@ -13,7 +13,10 @@ const CURVE_HEIGHT = 45;
 
 export const CurvedTabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const heightWithInsets = TAB_BAR_HEIGHT + insets.bottom;
+  
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   // Math to perfectly hug the floating button
   const buttonRadius = 28;
@@ -42,7 +45,7 @@ export const CurvedTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
     <View style={styles.container}>
       <View style={[styles.svgContainer, { height: heightWithInsets }]}>
         <Svg width={width} height={heightWithInsets} viewBox={`0 0 ${width} ${heightWithInsets}`}>
-          <Path d={path} fill={Colors.white} />
+          <Path d={path} fill={colors.surface} />
         </Svg>
       </View>
 
@@ -92,9 +95,9 @@ export const CurvedTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
                   style={styles.centerButton}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name={iconName} size={30} color={Colors.white} />
+                  <Ionicons name={iconName} size={30} color={colors.white} />
                 </TouchableOpacity>
-                <Text style={[styles.centerTabLabel, { color: isFocused ? Colors.primary : Colors.textLight }]}>
+                <Text style={[styles.centerTabLabel, { color: isFocused ? colors.primary : colors.textLight }]}>
                   {options.title}
                 </Text>
               </View>
@@ -116,10 +119,10 @@ export const CurvedTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
               <Ionicons 
                 name={iconName} 
                 size={24} 
-                color={isFocused ? Colors.primary : Colors.textLight} 
+                color={isFocused ? colors.primary : colors.textLight} 
                 style={styles.tabIcon}
               />
-              <Text style={[styles.tabLabel, { color: isFocused ? Colors.primary : Colors.textLight }]}>
+              <Text style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.textLight }]}>
                 {options.title}
               </Text>
             </TouchableOpacity>
@@ -130,7 +133,7 @@ export const CurvedTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 0,
@@ -187,11 +190,11 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     top: -28, // Center exactly on the tab bar top edge
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
     shadowRadius: 8,

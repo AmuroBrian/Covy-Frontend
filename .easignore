@@ -43,7 +43,3 @@ app-example
 /ios
 /android
 
-#credentials
-google-services.json
-app.json
-eas.json

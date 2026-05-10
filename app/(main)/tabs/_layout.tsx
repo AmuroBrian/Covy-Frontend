@@ -1,10 +1,15 @@
 import { Tabs } from 'expo-router';
-import { Colors } from '../../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { CurvedTabBar } from '../../../src/components/CurvedTabBar';
+import ChatModal from '../../../src/components/chat/ChatModal';
+import FloatingEmojis from '../../../src/components/shared/FloatingEmojis';
+import { useState } from 'react';
 
 export default function TabLayout() {
+  const [isChatOpen, setChatOpen] = useState(false);
+
   return (
+    <>
     <Tabs
       tabBar={(props) => <CurvedTabBar {...props} />}
       screenOptions={{
@@ -16,6 +21,14 @@ export default function TabLayout() {
         options={{
           title: 'Chat',
         }}
+        listeners={() => ({
+          tabPress: (e) => {
+            // Prevent default navigation
+            e.preventDefault();
+            // Open the modal instead
+            setChatOpen(true);
+          },
+        })}
       />
       <Tabs.Screen
         name="map"
@@ -30,5 +43,8 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+      <ChatModal visible={isChatOpen} onClose={() => setChatOpen(false)} />
+      <FloatingEmojis />
+    </>
   );
 }

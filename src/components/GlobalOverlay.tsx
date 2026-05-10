@@ -3,23 +3,18 @@ import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import LottieView from 'lottie-react-native';
 import { OverlayManager } from '../context/OverlayManager';
-import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 // Check if we are running in Expo Go
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-// We dynamically require Rive so we don't crash Expo Go at startup
-let Rive: any = null;
-if (!isExpoGo) {
-  try {
-    Rive = require('rive-react-native').default;
-  } catch (error) {
-    console.warn('Rive not available:', error);
-  }
-}
+// Rive implementation temporarily removed due to missing native bundle resources crashing the app on startup
 
 export const GlobalOverlay = () => {
   const [overlayState, setOverlayState] = useState<'none' | 'loading' | 'offline'>('none');
+  const { colors } = useTheme();
+  
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
     const unsubscribe = OverlayManager.subscribe((state) => {
@@ -50,18 +45,10 @@ export const GlobalOverlay = () => {
 
         {overlayState === 'loading' && (
           <>
-            {!isExpoGo && Rive ? (
-              <Rive
-                resourceName="loveloading"
-                autoplay={true}
-                style={styles.riveAnimation}
-              />
-            ) : (
-              <View style={styles.fallbackLoading}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={styles.subtitle}>Loading securely...</Text>
-              </View>
-            )}
+            <View style={styles.fallbackLoading}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.subtitle}>Loading securely...</Text>
+            </View>
           </>
         )}
       </View>
@@ -69,10 +56,10 @@ export const GlobalOverlay = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   overlayContainer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: colors.background === '#FFFFFF' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(18, 18, 18, 0.95)',
     zIndex: 99999,
     justifyContent: 'center',
     alignItems: 'center',
@@ -99,13 +86,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 10,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: Colors.textLight,
+    color: colors.textLight,
     textAlign: 'center',
     lineHeight: 22,
   },
